@@ -8,7 +8,10 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        // Inside the frontend container, `localhost` means the frontend container itself, not the backend container. 
+        // Use the Compose service name:
+        // target: 'http://localhost:5000',
+        target: 'http://backend:5000',
         changeOrigin: true,
       },
     },
