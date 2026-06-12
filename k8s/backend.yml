@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jerney-backend
+  namespace: jerney
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jerney-backend
+  template:
+    metadata:
+      labels:
+        app: jerney-backend
+    spec:
+      containers:
+        - name: backend
+          image: 865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-backend:v1
+          ports:
+            - containerPort: 5000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "5000"
+            - name: DB_HOST
+              value: jerney-postgres
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: jerney-postgres-secret
+                  key: POSTGRES_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: jerney-postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: jerney-postgres-secret
+                  key: POSTGRES_DB
+            - name: DATABASE_URL
+              value: postgres://jerney_user:jerney_pass_2026@jerney-postgres:5432/jerney_db
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jerney-backend
+  namespace: jerney
+spec:
+  selector:
+    app: jerney-backend
+  ports:
+    - port: 5000
+      targetPort: 5000
+---

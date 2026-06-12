@@ -138,6 +138,103 @@ curl -i localhost
 # ...
 ```
 
+## ECR
+
+Login
+```sh
+aws ecr get-login-password --region $AWS_REGION | \
+docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+```
+
+```sh
+docker build -f backend/Dockerfile -t jerney-backend ./backend
+docker build -f frontend/Dockerfile -t jerney-frontend ./frontend
+
+docker tag jerney-backend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-backend:latest
+docker tag jerney-frontend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-frontend:latest
+
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-backend:latest
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-frontend:latest
+
+```
+
+## EKS
+
+```sh
+eksctl create cluster \
+  --name $CLUSTER_NAME \
+  --region $AWS_REGION \
+  --nodes 1 \
+  --node-type t3.small \
+  --managed \
+  --spot
+
+# ❌ DELETE the cluster ❌
+# eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION
+
+aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_NAME
+```
+
+### ddx
+ERR:
+```sh
+host not found in upstream "backend" in /etc/nginx/conf.d/default.conf:9
+```
+
+Nginx is trying to proxy to a DNS name called `backend`, but Kubernetes cannot resolve `backend` in the `jerney` namespace.
+
+You probably need the `nginx upstream` to use the Kubernetes Service name, e.g.:
+```sh
+kubectl get svc -n jerney
+# NAME              TYPE           CLUSTER-IP       EXTERNAL-IP
+# jerney-backend    ClusterIP      10.100.100.106   <none>  
+```
+In `frontend/nginx.conf`:
+```nginx
+proxy_pass http://jerney-backend:PORT;
+```
+
+Investigate the frontend image:
+```sh
+kubectl run nginx-debug \
+  -n jerney \
+  --rm -it \
+  --restart=Never \
+  --image=865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-frontend:v2 \
+  -- sh
+
+cat /etc/nginx/conf.d/default.conf
+nginx -T
+ls -la /etc/nginx/conf.d/
+```
+
+### pg
+For fastest progress, we'll use ephemeral Postgres storage.
+```yml
+# k8s/postgres.yaml
+
+volumes:
+  - name: postgres-data
+    emptyDir: {}
+```
+`emptyDir`: The DB data lives inside the running Postgres pod's temporary volume. It will disappear if the Postgres pod is deleted/recreated.
+
+Verify:
+```sh
+POSTGRES_POD=$(kubectl get pod -n jerney -l app=jerney-postgres -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -it $POSTGRES_POD -n jerney -- \
+  psql -U jerney_user -d jerney_db
+
+# jerney_db=# \dt
+#             List of relations
+#  Schema |   Name   | Type  |    Owner    
+# --------+----------+-------+-------------
+#  public | comments | table | jerney_user
+#  public | posts    | table | jerney_user
+
+```
+
 ## MiSK
 
 ### .dockerignore

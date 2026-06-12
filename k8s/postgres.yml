@@ -1,0 +1,53 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jerney-postgres
+  namespace: jerney
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jerney-postgres
+  template:
+    metadata:
+      labels:
+        app: jerney-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: jerney-postgres-secret
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - jerney_user
+                - -d
+                - jerney_db
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: postgres-data
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jerney-postgres
+  namespace: jerney
+spec:
+  selector:
+    app: jerney-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
