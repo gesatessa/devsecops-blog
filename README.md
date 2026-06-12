@@ -104,3 +104,60 @@ docker compose exec postgres psql -U jerney_user -d jerney_db
 #  public | comments | table | jerney_user
 #  public | posts    | table | jerney_user
 ```
+
+## nginx (production setup)
+
+With Nginx, we don't run `npm run dev`. Instead, we build the app once: `npm run build`.
+This produces sth like:
+```yml
+dist/
+  index.html
+  assets/
+```
+
+Then we copy those files into the Nginx image:
+```Dockerfile
+COPY --from=build /app/dist /usr/share/nginx/html
+```
+At runtime, Nginx simply serves those static files. There's no file watching or live recompilation.
+
+Basically, in production:
+- `npm run build`
+- Nginx serves optimized static assets
+- No source-code volumes needed
+- Smaller, more secure, and more efficient runtime image
+
+NOTE: `npm ci` requires a `package-lock.json`
+For production images, `npm ci` is better - than `npm install`, because it gives reproducible installs.
+
+
+```sh
+curl -i localhost
+# HTTP/1.1 200 OK
+# Server: nginx/1.31.1
+# ...
+```
+
+## MiSK
+
+### .dockerignore
+
+Why it helps
+
+Without a `.dockerignore`, when Docker executes:
+```Dockerfile
+COPY . .
+```
+it sends everything in the build context to the Docker daemon, including things like:
+
+- node_modules/
+- .git/
+- log files
+- build artifacts
+- local environment files
+
+This can:
+- 🚀 Slow down builds.
+- 📦 Make the build context unnecessarily large.
+- 🔄 Cause unnecessary cache invalidation.
+- 🔒 Accidentally copy sensitive files into images.

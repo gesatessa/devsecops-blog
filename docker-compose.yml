@@ -38,21 +38,30 @@ services:
       - ./backend:/app
       - backend_node_modules:/app/node_modules
 
-  frontend:
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile.dev
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - backend
+  #   volumes:
+  #     - ./frontend:/app
+  #     - frontend_node_modules:/app/node_modules
+  #   environment:
+  #     CHOKIDAR_USEPOLLING: "true"
+  frontend-nginx:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "80:80"
     depends_on:
+      # Because nginx starts before it can resolve the Compose service name backend.
       - backend
-    volumes:
-      - ./frontend:/app
-      - frontend_node_modules:/app/node_modules
-    environment:
-      CHOKIDAR_USEPOLLING: "true"
 
 volumes:
   postgres_data:
   backend_node_modules:
-  frontend_node_modules:
+  # frontend_node_modules:
