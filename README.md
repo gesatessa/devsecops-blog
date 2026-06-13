@@ -235,6 +235,73 @@ kubectl exec -it $POSTGRES_POD -n jerney -- \
 
 ```
 
+## StatefulSet with a PVC
+
+### EBS CSI driver
+The Container Storage Interface (CSI) driver is the plugin that teaches Kubernetes how to talk to AWS EBS.
+```yml
+StatefulSet
+     │
+     ▼
+Creates PVC
+     │
+     ▼
+StorageClass (gp3)
+     │
+     ▼
+EBS CSI Driver
+     │
+     ▼
+AWS EC2 API
+     │
+     ▼
+Creates an EBS volume
+     │
+     ▼
+Creates a PV and binds it to the PVC
+     │
+     ▼
+Mounts the volume into your Pod
+```
+
+AWS recommends installing [the EBS CSI driver](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html) as an EKS add-on.
+```sh
+# Check whether OIDC exists:
+eksctl utils associate-iam-oidc-provider \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --approve
+
+# Create the IAM service account for the EBS CSI controller:
+eksctl create iamserviceaccount \
+  --name ebs-csi-controller-sa \
+  --namespace kube-system \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --role-name AmazonEKS_EBS_CSI_DriverRole \
+  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+  --approve
+
+# Install the EKS add-on:
+eksctl create addon \
+  --name aws-ebs-csi-driver \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --service-account-role-arn arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/AmazonEKS_EBS_CSI_DriverRole \
+  --force
+
+# verify
+eksctl get addon \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --name aws-ebs-csi-driver
+
+kubectl get pods -n kube-system \
+  -l app.kubernetes.io/name=aws-ebs-csi-driver
+
+
+```
+
 ## MiSK
 
 ### .dockerignore

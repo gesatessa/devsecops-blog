@@ -29,8 +29,8 @@ spec:
               value: "5432"
             - name: DB_USER
               valueFrom:
-                secretKeyRef:
-                  name: jerney-postgres-secret
+                configMapKeyRef:
+                  name: jerney-postgres-config
                   key: POSTGRES_USER
             - name: DB_PASSWORD
               valueFrom:
@@ -39,8 +39,8 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: DB_NAME
               valueFrom:
-                secretKeyRef:
-                  name: jerney-postgres-secret
+                configMapKeyRef:
+                  name: jerney-postgres-config
                   key: POSTGRES_DB
             - name: DATABASE_URL
               value: postgres://jerney_user:jerney_pass_2026@jerney-postgres:5432/jerney_db

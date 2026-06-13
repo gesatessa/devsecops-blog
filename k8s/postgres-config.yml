@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jerney-postgres-config
+  namespace: jerney
+data:
+  POSTGRES_USER: jerney_user
+  POSTGRES_DB: jerney_db
