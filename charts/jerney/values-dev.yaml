@@ -1,0 +1,8 @@
+postgres:
+  password: jerney_pass_2026
+
+backend:
+  image: 865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-backend:v1
+
+frontend:
+  image: 865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-frontend:v2

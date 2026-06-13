@@ -287,7 +287,7 @@ eksctl create addon \
   --name aws-ebs-csi-driver \
   --cluster "$CLUSTER_NAME" \
   --region "$AWS_REGION" \
-  --service-account-role-arn arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/AmazonEKS_EBS_CSI_DriverRole \
+  --service-account-role-arn arn:aws:iam::${AWS_ACCOUNT_ID}:role/AmazonEKS_EBS_CSI_DriverRole \
   --force
 
 # verify
@@ -305,20 +305,136 @@ kubectl get pods -n kube-system \
 ## Helm
 
 ```sh
+# check rendered YAML before applying
 mkdir -p helm/jerney/templates
 
 helm template jerney ./charts/jerney
 
 # install
-helm install jerney ./charts/jerney
+helm install jerney ./charts/jerney \
+  --namespace jerney \
+  --create-namespace
+
+# or simply:
+helm upgrade --install jerney ./charts/jerney \
+  -n jerney \
+  --create-namespace
+
 helm list
 
 # upgrade after changes:
-helm upgrade jerney ./charts/jerney
+helm upgrade jerney ./charts/jerney -n jerney
 
 # check
-helm list -n jerney
 kubectl get all,pvc,storageclass -n jerney
+kubectl get all -n jerney
+
+# uninstall
+# helm uninstall jerney -n jerney ❌
+helm uninstall jerney -n default
+```
+
+
+```sh
+helm template jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml
+
+# If it renders cleanly, install with dev values
+helm upgrade --install jerney ./charts/jerney \
+  -n jerney \
+  --create-namespace \
+  -f charts/jerney/values-dev.yaml
+```
+
+## NetworkPolicy
+
+Our current topology is effectively:
+```yml
+                Internet
+                    │
+                    ▼
+          LoadBalancer (frontend)
+                    │
+                    ▼
+              frontend pod
+                    │
+                    ▼
+              backend pod
+                    │
+                    ▼
+              postgres pod
+
+AND ALSO...
+
+Any Pod ───────────────────────────────► Postgres ✅
+Any Pod ───────────────────────────────► Backend ✅
+Backend ───────────────────────────────► Frontend ✅
+Frontend ──────────────────────────────► Postgres ✅
+```
+
+Next we'll lock down traffic inside the namespace.
+> The goal is simple: frontend can talk to backend, backend can talk to Postgres, and random pods cannot directly hit the database.
+
+Important: **NetworkPolicy** only works if your EKS networking supports it. With AWS VPC CNI, you may need network policy support enabled, or use a CNI like Calico/Cilium.
+
+```sh
+kubectl get networkpolicy -n jerney
+kubectl describe networkpolicy jerney-network-policy -n jerney
+```
+
+Launch a throwaway pod:
+```sh
+kubectl run attacker \
+  --image=nicolaka/netshoot \
+  --rm -it \
+  -n jerney \
+  -- /bin/bash
+
+
+attacker:~# nc -zv jerney-pg 5432
+# Connection to jerney-pg (192.168.25.97) 5432 port [tcp/postgresql] succeeded!
+
+# ⚠️ That pod was never supposed to have database access, but it does.
+```
+
+
+```sh
+aws eks update-addon \
+  --cluster-name $CLUSTER_NAME \
+  --addon-name vpc-cni \
+  --configuration-values '{"enableNetworkPolicy":"true"}' \
+  --resolve-conflicts OVERWRITE
+
+# restart the CNI pods:
+kubectl rollout restart daemonset aws-node -n kube-system
+kubectl rollout status daemonset aws-node -n kube-system
+
+# verify the network policy agent appears:
+kubectl get pods -n kube-system -l k8s-app=aws-node
+kubectl describe daemonset aws-node -n kube-system | grep -i policy -A5
+
+```
+One more important detail: 
+AWS notes NetworkPolicies apply to Pods that are part of a controller like a Deployment; standalone Pods may not be enforced the same way. So for a better attacker test, use a Deployment:
+
+```sh
+kubectl create deployment attacker \
+  --image=nicolaka/netshoot \
+  -n jerney \
+  -- sleep infinity
+
+kubectl exec -it deploy/attacker -n jerney -- nc -zv -w 5 jerney-pg 5432
+# nc: connect to jerney-pg (192.168.25.97) port 5432 (tcp) timed out: Operation in progress
+# command terminated with exit code 1
+
+# cleanup
+kubectl delete deployment attacker -n jerney
+```
+
+```sh
+attacker:~# nc -zv jerney-pg 5432
+# nc: connect to jerney-pg (192.168.25.97) port 5432 (tcp) failed: Operation timed out
 ```
 
 ## MiSK

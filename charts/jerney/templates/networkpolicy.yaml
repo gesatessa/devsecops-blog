@@ -1,0 +1,61 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jerney-network-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "jerney.labels" . | indent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Allow frontend -> backend
+    - from:
+        - podSelector:
+            matchLabels:
+              app: {{ .Values.frontend.name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.port }}
+
+    # Allow backend -> postgres
+    - from:
+        - podSelector:
+            matchLabels:
+              app: {{ .Values.backend.name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.postgres.port }}
+
+  egress:
+    # Allow frontend -> backend
+    - to:
+        - podSelector:
+            matchLabels:
+              app: {{ .Values.backend.name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.port }}
+
+    # Allow backend -> postgres
+    - to:
+        - podSelector:
+            matchLabels:
+              app: {{ .Values.postgres.name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.postgres.port }}
+
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}
