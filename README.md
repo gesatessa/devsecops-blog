@@ -302,6 +302,25 @@ kubectl get pods -n kube-system \
 
 ```
 
+## Helm
+
+```sh
+mkdir -p helm/jerney/templates
+
+helm template jerney ./charts/jerney
+
+# install
+helm install jerney ./charts/jerney
+helm list
+
+# upgrade after changes:
+helm upgrade jerney ./charts/jerney
+
+# check
+helm list -n jerney
+kubectl get all,pvc,storageclass -n jerney
+```
+
 ## MiSK
 
 ### .dockerignore
