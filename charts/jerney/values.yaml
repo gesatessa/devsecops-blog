@@ -39,6 +39,10 @@ backend:
     minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 70
+  strategy:
+    type: RollingUpdate
+    maxSurge: 1
+    maxUnavailable: 0
 
 frontend:
   name: jerney-frontend
@@ -58,11 +62,15 @@ frontend:
     minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 70
+  strategy:
+    type: RollingUpdate
+    maxSurge: 1
+    maxUnavailable: 0
 
 ingress:
   enabled: true
   className: alb
-  host: "jerney.44.208.196.100.nip.io"
+  host: "jerney.54.83.241.104.nip.io"
 
 networkPolicy:
   enabled: true

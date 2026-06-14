@@ -519,6 +519,136 @@ kubectl scale deployment jerney-frontend --replicas=1 -n jerney
 
 kubectl get hpa jerney-frontend -n jerney
 ```
+
+## rolling updates and rollbacks (with Helm)
+We'll add explicit rolling update settings to frontend/backend, deploy them through Helm, then simulate both a good rollout and a bad rollout so rollback becomes real rather than theoretical.
+
+```sh
+# deploy
+helm upgrade jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml
+
+# watch rollout
+kubectl rollout status deployment/jerney-frontend -n jerney
+kubectl rollout status deployment/jerney-backend -n jerney
+
+# check strategy
+kubectl describe deployment jerney-frontend -n jerney | grep -A5 Strategy
+
+# simulate a bad rollout:
+helm upgrade jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml \
+  --set frontend.image=nginx:does-not-exist
+
+# watch
+kubectl get pods -n jerney -w
+kubectl rollout status deployment/jerney-frontend -n jerney
+
+# You should see the new pod fail with image pull errors, 
+# while the old frontend pod stays running because: `maxUnavailable: 0`
+
+```
+
+Now rollback:
+```sh
+helm history jerney -n jerney
+# REVISION        UPDATED                     STATUS          CHART           DESCRIPTION                                                               
+# 1               Sun Jun 14 17:57:13 2026    superseded      jerney-0.1.0    Release "jerney" failed: 1 error occurred:                                
+#                                                                                      * networkpolicies.networking....    
+# 2               Sun Jun 14 18:31:05 2026    superseded      jerney-0.1.0    1.0.0           Upgrade complete
+# 3               Sun Jun 14 18:32:34 2026    deployed        jerney-0.1.0    1.0.0           Upgrade complete
+
+
+# 👉 roll back to revision 2:
+helm rollback jerney 2 -n jerney
+
+helm history jerney -n jerney
+# ...
+# 4               Sun Jun 14 18:54:19 2026     deployed        jerney-0.1.0    1.0.0           Rollback to 2 
+
+# watch it recover:
+kubectl get pods -n jerney -w
+```
+
+What we just proved: 👇
+```yml
+bad image deployed
+  ↓
+new ReplicaSet cannot become ready
+  ↓
+old frontend pod stays running because maxUnavailable=0
+  ↓
+service remains available
+  ↓
+helm rollback returns chart values/manifests to revision 2
+```
+
+📢 Important lesson: 
+Helm marked `revision 3` as deployed because Kubernetes accepted the manifests. Helm does not automatically know the rollout failed unless we use `--wait`.
+
+```sh
+helm upgrade jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml \
+  --set frontend.image=nginx:does-not-exist \
+  --wait \
+  --timeout 2m
+```
+Better production command (this should become `the default deploy command`)
+`--atomic` means: if the upgrade fails, Helm automatically rolls back.
+```sh
+helm upgrade --install jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml \
+  --set frontend.image=nginx:does-not-exist \
+  --wait \
+  --atomic \
+  --timeout 5m
+
+# Error: UPGRADE FAILED: release jerney failed, and has been rolled back due to atomic being set: context deadline exceeded
+
+# 5           Sun Jun 14 19:06:34 2026        pending-upgrade jerney-0.1.0      Preparing upgrade
+
+# 👇
+
+# 5           Sun Jun 14 19:06:34 2026        failed          jerney-0.1.0      Upgrade "jerney" failed: context deadline exceeded                        
+# 6           Sun Jun 14 19:11:35 2026        deployed        jerney-0.1.0      Rollback to 4
+```
+
+That is exactly the behavior we wanted to see.
+```sh
+revision 4 = known good release
+revision 5 = attempted bad upgrade with nginx:does-not-exist
+revision 5 = failed because --wait timed out
+revision 6 = automatic rollback to revision 4 because --atomic was set
+```
+
+What Helm did for us:
+```yml
+bad upgrade attempted
+  ↓
+new frontend pod never became ready
+  ↓
+--wait kept watching until timeout
+  ↓
+--atomic triggered rollback
+  ↓
+release returned to previous good state
+```
+
+Check final state:
+```sh
+kubectl get pods -n jerney
+# frontend image
+kubectl get deployment jerney-frontend -n jerney -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+
+curl -I http://jerney.54.83.241.104.nip.io
+```
+
+🎉🎉🎉 We've now covered `zero-downtime rolling updates` + `safe automatic rollback`.
+
 ## MiSK
 
 ### .dockerignore

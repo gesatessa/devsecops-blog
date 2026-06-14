@@ -7,6 +7,11 @@ metadata:
 {{ include "jerney.labels" . | indent 4 }}
 spec:
   replicas: {{ .Values.backend.replicas }}
+  strategy:
+    type: {{ .Values.backend.strategy.type }}
+    rollingUpdate:
+      maxSurge: {{ .Values.backend.strategy.maxSurge }}
+      maxUnavailable: {{ .Values.backend.strategy.maxUnavailable }}
   selector:
     matchLabels:
       app: {{ .Values.backend.name }}
