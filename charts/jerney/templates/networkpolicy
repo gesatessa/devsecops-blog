@@ -13,11 +13,6 @@ spec:
     - Egress
 
   ingress:
-    # Allow ALB / external traffic to frontend on port 80
-    - ports:
-        - protocol: TCP
-          port: {{ .Values.frontend.port }}
-
     # Allow frontend -> backend
     - from:
         - podSelector:

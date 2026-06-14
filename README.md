@@ -437,6 +437,63 @@ attacker:~# nc -zv jerney-pg 5432
 # nc: connect to jerney-pg (192.168.25.97) port 5432 (tcp) failed: Operation timed out
 ```
 
+## ingress
+
+### install AWS Load Balancer Controller
+
+```sh
+eksctl utils associate-iam-oidc-provider \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --approve
+
+curl -o iam_policy.json \
+  https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+
+aws iam create-policy \
+  --policy-name AWSLoadBalancerControllerIAMPolicy \
+  --policy-document file://iam_policy.json
+
+rm iam_policy.json
+
+eksctl create iamserviceaccount \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --namespace kube-system \
+  --name aws-load-balancer-controller \
+  --role-name AmazonEKSLoadBalancerControllerRole \
+  --attach-policy-arn arn:aws:iam::$AWS_ACCOUNT_ID:policy/AWSLoadBalancerControllerIAMPolicy \
+  --approve
+
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+
+helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --set clusterName="$CLUSTER_NAME" \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller
+
+# verify
+kubectl get deployment -n kube-system aws-load-balancer-controller
+```
+### Deploy
+
+`alb.ingress.kubernetes.io/scheme: internet-facing` makes an external ALB, and `alb.ingress.kubernetes.io/target-type: ip` routes traffic directly to pods.
+
+```sh
+helm upgrade jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml
+
+# get the ALB address
+kubectl get ingress -n jerney
+
+# get one IP:
+dig +short $ALB | head -n1
+```
+
+
 ## MiSK
 
 ### .dockerignore

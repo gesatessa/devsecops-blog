@@ -33,7 +33,12 @@ frontend:
   image: 865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-frontend:v2
   replicas: 1
   port: 80
-  serviceType: LoadBalancer
+  serviceType: ClusterIP
+
+ingress:
+  enabled: true
+  className: alb
+  host: "jerney.44.208.196.100.nip.io"
 
 networkPolicy:
   enabled: true
