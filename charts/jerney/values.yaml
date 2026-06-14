@@ -27,6 +27,18 @@ backend:
   image: 865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-backend:v1
   replicas: 1
   port: 5000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
 
 frontend:
   name: jerney-frontend
@@ -34,6 +46,18 @@ frontend:
   replicas: 1
   port: 80
   serviceType: ClusterIP
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
 
 ingress:
   enabled: true

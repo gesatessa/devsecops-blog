@@ -164,8 +164,9 @@ docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-frontend:la
 eksctl create cluster \
   --name $CLUSTER_NAME \
   --region $AWS_REGION \
+  --version 1.35 \
   --nodes 1 \
-  --node-type t3.small \
+  --node-type t3.medium \
   --managed \
   --spot
 
@@ -298,7 +299,6 @@ eksctl get addon \
 
 kubectl get pods -n kube-system \
   -l app.kubernetes.io/name=aws-ebs-csi-driver
-
 
 ```
 
@@ -493,7 +493,32 @@ kubectl get ingress -n jerney
 dig +short $ALB | head -n1
 ```
 
+## HPA
 
+```sh
+# render
+helm template jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml
+
+# deploy
+helm upgrade jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml
+
+# check
+kubectl get pods -n jerney
+kubectl get hpa -n jerney
+kubectl describe hpa jerney-backend -n jerney
+kubectl describe hpa jerney-frontend -n jerney
+```
+
+
+```sh
+kubectl scale deployment jerney-frontend --replicas=1 -n jerney
+
+kubectl get hpa jerney-frontend -n jerney
+```
 ## MiSK
 
 ### .dockerignore
