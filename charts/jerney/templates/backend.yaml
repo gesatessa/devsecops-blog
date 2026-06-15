@@ -44,7 +44,8 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.externalDatabase.name }}-secret
+                  # name: {{ .Values.externalDatabase.name }}-secret
+                  name: {{ default (printf "%s-secret" .Values.externalDatabase.name) .Values.externalDatabase.existingSecret }}
                   key: POSTGRES_PASSWORD
             - name: DB_NAME
               valueFrom:

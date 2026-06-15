@@ -161,6 +161,8 @@ docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-frontend:la
 ## EKS
 
 ```sh
+source .env
+
 eksctl create cluster \
   --name $CLUSTER_NAME \
   --region $AWS_REGION \
@@ -340,8 +342,8 @@ kubectl get all,pvc,storageclass -n jerney
 kubectl get all -n jerney
 
 # uninstall
-# helm uninstall jerney -n jerney ❌
-helm uninstall jerney -n default
+helm uninstall jerney -n jerney
+# release "jerney" uninstalled
 ```
 
 
@@ -484,8 +486,16 @@ helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-contro
   --set serviceAccount.create=false \
   --set serviceAccount.name=aws-load-balancer-controller
 
-# verify
+# verify 2/2
 kubectl get deployment -n kube-system aws-load-balancer-controller
+
+helm list -n kube-system
+# NAME                            NAMESPACE     REVISION   UPDATED                   STATUS      CHART                                APP VERSION
+# aws-load-balancer-controller    kube-system   1          2026-06-15 19:42:26 UTC   deployed    aws-load-balancer-controller-3.4.0   v3.4.0
+
+helm history aws-load-balancer-controller -n kube-system
+# REVISION        UPDATED                         STATUS          CHART                                   APP VERSION     DESCRIPTION
+# 1               Mon Jun 15 19:42:26 2026        deployed        aws-load-balancer-controller-3.4.0      v3.4.0          Install complete
 ```
 ### Deploy
 
@@ -664,9 +674,9 @@ curl -I http://jerney.54.83.241.104.nip.io
 ```sh
 helm get values jerney -n jerney
 
-
 ```
 
+50/50
 ```sh
 helm upgrade jerney ./charts/jerney \
   -n jerney \
@@ -780,7 +790,7 @@ aws rds create-db-instance \
   --allocated-storage 20 \
   --storage-type gp3 \
   --master-username jerney_user \
-  --master-user-password "$RDS_PASSWORD \
+  --master-user-password "$RDS_PASSWORD" \
   --db-name jerney_db \
   --vpc-security-group-ids "$RDS_SG" \
   --db-subnet-group-name jerney-rds-subnets \
@@ -792,7 +802,6 @@ aws rds create-db-instance \
 aws rds wait db-instance-available \
   --region "$AWS_REGION" \
   --db-instance-identifier jerney-pg
-
 
 # change password -----
 aws rds modify-db-instance \
@@ -841,6 +850,18 @@ Deploy
 # inspect env variables:
 kubectl get deploy jerney-backend -n jerney -o yaml | grep -A40 "env:"
 
+# debug mode
+helm upgrade --install jerney ./charts/jerney \
+  -n jerney \
+  --create-namespace \
+  -f charts/jerney/values-dev.yaml \
+  --set-string externalDatabase.host="$RDS_ENDPOINT" \
+  --set-string externalDatabase.password="$RDS_PASSWORD" \
+  --wait \
+  --timeout 10m \
+  --debug
+
+# prod mode
 helm upgrade jerney ./charts/jerney \
   -n jerney \
   -f charts/jerney/values-dev.yaml \
@@ -868,6 +889,49 @@ Cleanup
 
 export AWS_REGION=us-east-1 ./delete-rds.sh
 ```
+
+## DB SECRET
+
+### existingSecret
+Helm uses a secret that already exists and doesn't need to know the password value.
+
+Change backend DB_PASSWORD to 👇:
+```yml
+- name: DB_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ default (printf "%s-secret" .Values.externalDatabase.name) .Values.externalDatabase.existingSecret }}
+      key: POSTGRES_PASSWORD
+
+```
+It's actually recommend to avoid the one-liner above. Make the logic explicit; it's much easier to read and maintain:
+```yml
+{{- if .Values.externalDatabase.existingSecret }}
+name: {{ .Values.externalDatabase.existingSecret }}
+{{- else }}
+name: {{ .Values.externalDatabase.name }}-secret
+{{- end }}
+```
+
+Create the secret outside Helm:
+```sh
+kubectl create secret generic jerney-ext-db-secret \
+  -n jerney \
+  --from-literal=POSTGRES_PASSWORD="$RDS_PASSWORD"
+```
+
+Then deploy without passing password:
+```sh
+# kubectl create namespace jerney
+
+helm upgrade --install jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml \
+  --set-string externalDatabase.host="$RDS_ENDPOINT" \
+  --wait
+```
+
+### AWS Secrets Manager + External Secrets Operator
 
 ## MiSK
 

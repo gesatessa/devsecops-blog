@@ -24,6 +24,7 @@ externalDatabase:
   user: jerney_user
   password: ""
   database: jerney_db
+  existingSecret: jerney-ext-db-secret
 
 storageClass:
   enabled: true
@@ -98,7 +99,7 @@ canary:
 ingress:
   enabled: true
   className: alb
-  host: "jerney.100.30.61.48.nip.io"
+  host: "jerney.52.71.250.204.nip.io"
 
 networkPolicy:
   enabled: true
