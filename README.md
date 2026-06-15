@@ -933,6 +933,135 @@ helm upgrade --install jerney ./charts/jerney \
 
 ### AWS Secrets Manager + External Secrets Operator
 
+The flow 👇
+```yml
+AWS Secrets Manager
+  ↓
+External Secrets Operator
+  ↓
+ExternalSecret
+  ↓
+Kubernetes Secret
+  ↓
+backend DB_PASSWORD
+```
+ESO's AWS provider supports Secrets Manager, and EKS should use IRSA so the ESO pod can read AWS secrets without static AWS keys.
+
+1) Create secret in AWS Secrets Manager
+```sh
+aws secretsmanager create-secret \
+  --region "$AWS_REGION" \
+  --name jerney/dev/rds \
+  --secret-string '{"POSTGRES_PASSWORD":"ChangeM3"}'
+
+# {
+#     "ARN": "arn:aws:secretsmanager:us-east-1:865274826587:secret:jerney/dev/rds-sAWbjI",
+#     "Name": "jerney/dev/rds",
+#     "VersionId": "61de0187-1e0d-4ba6-ac89-f1552aa09fc7"
+# }
+
+# If it already exists -----
+aws secretsmanager put-secret-value \
+  --region "$AWS_REGION" \
+  --secret-id jerney/dev/rds \
+  --secret-string '{"POSTGRES_PASSWORD":"ChangeM3"}'
+
+```
+
+2) Install ESO
+```sh
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+
+helm upgrade --install external-secrets external-secrets/external-secrets \
+  -n external-secrets \
+  --create-namespace \
+  --set installCRDs=true \
+  --wait
+```
+
+3) Create IAM policy for ESO
+```sh
+cat > /tmp/eso-secrets-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:jerney/dev/rds-*"
+    }
+  ]
+}
+EOF
+
+aws iam create-policy \
+  --policy-name JerneyESOSecretsPolicy \
+  --policy-document file:///tmp/eso-secrets-policy.json
+
+```
+
+4) Give ESO access through IRSA
+```sh
+eksctl utils associate-iam-oidc-provider \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --approve
+
+eksctl create iamserviceaccount \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --namespace external-secrets \
+  --name external-secrets \
+  --role-name JerneyExternalSecretsRole \
+  --attach-policy-arn arn:aws:iam::$AWS_ACCOUNT_ID:policy/JerneyESOSecretsPolicy \
+  --override-existing-serviceaccounts \
+  --approve
+```
+Restart ESO so it uses the annotated service account:
+```sh
+kubectl rollout restart deployment external-secrets -n external-secrets
+kubectl rollout status deployment external-secrets -n external-secrets
+```
+
+5) Add `SecretStore` & `ExternalSecret`
+
+6) Update `values.yaml`
+```yml
+externalDatabase:
+  existingSecret: jerney-ext-db-secret
+
+externalSecrets:
+  enabled: true
+  name: jerney-rds-password
+  secretStoreName: aws-secrets-manager
+  region: us-east-1
+  awsSecretName: jerney/dev/rds
+```
+
+
+7) Deploy without passing password
+```sh
+helm upgrade --install jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml \
+  --set-string externalDatabase.host="$RDS_ENDPOINT" \
+  --set-string externalSecrets.region="$AWS_REGION" \
+  --wait \
+  --atomic \
+  --timeout 5m
+
+# check
+kubectl get secretstore,externalsecret -n jerney
+kubectl describe externalsecret jerney-rds-password -n jerney
+kubectl get secret jerney-ext-db-secret -n jerney
+```
+
+✅ Now Helm no longer receives, renders, or stores the DB password.
+
 ## MiSK
 
 ### .dockerignore

@@ -18,13 +18,20 @@ postgres:
 
 externalDatabase:
   enabled: true
-  name: jerney-ext-db
+  name: jerney-ext-db-secret
   host: ""
   port: 5432
   user: jerney_user
   password: ""
   database: jerney_db
   existingSecret: jerney-ext-db-secret
+
+externalSecrets:
+  enabled: true
+  name: jerney-rds-password
+  secretStoreName: aws-secrets-manager
+  region: us-east-1
+  awsSecretName: jerney/dev/rds
 
 storageClass:
   enabled: true
@@ -99,7 +106,7 @@ canary:
 ingress:
   enabled: true
   className: alb
-  host: "jerney.52.71.250.204.nip.io"
+  host: "jerney.100.28.7.21.nip.io"
 
 networkPolicy:
   enabled: true
