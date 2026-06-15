@@ -32,24 +32,29 @@ spec:
             - name: PORT
               value: {{ .Values.backend.port | quote }}
             - name: DB_HOST
-              value: {{ .Values.postgres.name }}
+              # value: {{ .Values.postgres.name }}
+              value: {{ .Values.externalDatabase.host | quote }}
             - name: DB_PORT
-              value: {{ .Values.postgres.port | quote }}
+              value: {{ .Values.externalDatabase.port | quote }}
             - name: DB_USER
               valueFrom:
                 configMapKeyRef:
-                  name: {{ .Values.postgres.name }}-config
+                  name: {{ .Values.externalDatabase.name }}-config
                   key: POSTGRES_USER
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.postgres.name }}-secret
+                  name: {{ .Values.externalDatabase.name }}-secret
                   key: POSTGRES_PASSWORD
             - name: DB_NAME
               valueFrom:
                 configMapKeyRef:
-                  name: {{ .Values.postgres.name }}-config
+                  name: {{ .Values.externalDatabase.name }}-config
                   key: POSTGRES_DB
+            - name: PGSSLMODE
+              value: require
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
 
           readinessProbe:
             tcpSocket:

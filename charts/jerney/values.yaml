@@ -1,4 +1,5 @@
 postgres:
+  enabled: false
   name: jerney-pg
   image: postgres:16-alpine
   user: jerney_user
@@ -14,6 +15,15 @@ postgres:
       memory: 256Mi
     limits:
       memory: 512Mi
+
+externalDatabase:
+  enabled: true
+  name: jerney-ext-db
+  host: ""
+  port: 5432
+  user: jerney_user
+  password: ""
+  database: jerney_db
 
 storageClass:
   enabled: true
@@ -67,10 +77,28 @@ frontend:
     maxSurge: 1
     maxUnavailable: 0
 
+frontendCanary:
+  enabled: true
+  name: jerney-frontend-canary
+  image: 865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-frontend:f1
+  replicas: 1
+  port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+canary:
+  stableWeight: 90
+  canaryWeight: 10
+
 ingress:
   enabled: true
   className: alb
-  host: "jerney.54.83.241.104.nip.io"
+  host: "jerney.100.30.61.48.nip.io"
 
 networkPolicy:
   enabled: true

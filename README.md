@@ -171,9 +171,19 @@ eksctl create cluster \
   --spot
 
 # ❌ DELETE the cluster ❌
-# eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION
+eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION
 
 aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_NAME
+
+# in case the node goes down (we're using spot instance to save cost)
+# fire up another one immediately:
+eksctl create nodegroup \
+  --cluster $CLUSTER_NAME \
+  --region $AWS_REGION \
+  --node-type t3.medium \
+  --nodes 1 \
+  --managed \
+  -- spot
 ```
 
 ### ddx
@@ -648,6 +658,216 @@ curl -I http://jerney.54.83.241.104.nip.io
 ```
 
 🎉🎉🎉 We've now covered `zero-downtime rolling updates` + `safe automatic rollback`.
+
+## canary deployment
+
+```sh
+helm get values jerney -n jerney
+
+
+```
+
+```sh
+helm upgrade jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml \
+  --set canary.stableWeight=50 \
+  --set canary.canaryWeight=50 \
+  --wait \
+  --atomic \
+  --timeout 5m
+```
+
+```sh
+kubectl run curltest \               
+  --image=nicolaka/netshoot \
+  --rm -it \
+  -n jerney \
+  -- sh
+
+# inside the c 👇
+curl -s http://jerney-frontend | grep -o '/assets/index-[^"]*\.js'
+# /assets/index-DYab1QoI.js
+
+curl -s http://jerney-frontend-canary | grep -o '/assets/index-[^"]*\.js'
+# /assets/index-C5SBYYg_.js
+
+curl -s http://jerney-frontend/assets/index-DYab1QoI.js | grep -o "Welcome to Jerney\|Start your Jerney"
+# Welcome to Jerney
+
+curl -s http://jerney-frontend-canary/assets/index-C5SBYYg_.js | grep -o "Welcome to Jerney\|Start your Jerney"
+# Start your Jerney
+
+```
+
+```sh
+for i in {1..50}; do
+  curl -s -H "Cache-Control: no-cache" \
+  "http://jerney.52.202.99.105.nip.io/?t=$i" \
+  | grep -E "Welcome to Jerney|Start your Jerney"
+done
+```
+
+## RDS
+
+```sh
+export VPC_ID=$(aws eks describe-cluster \
+  --name "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --query "cluster.resourcesVpcConfig.vpcId" \
+  --output text)
+
+echo $VPC_ID
+
+export NODE_SG=$(aws ec2 describe-security-groups \
+  --region "$AWS_REGION" \
+  --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:aws:eks:cluster-name,Values=$CLUSTER_NAME" \
+  --query "SecurityGroups[0].GroupId" \
+  --output text)
+
+echo $NODE_SG
+
+# create an RDS security group
+export RDS_SG=$(aws ec2 create-security-group \
+  --region "$AWS_REGION" \
+  --group-name jerney-rds-sg \
+  --description "Allow PostgreSQL from EKS nodes" \
+  --vpc-id "$VPC_ID" \
+  --query "GroupId" \
+  --output text)
+
+echo $RDS_SG
+
+# allow EKS nodes to connect to RDS:
+aws ec2 authorize-security-group-ingress \
+  --region "$AWS_REGION" \
+  --group-id "$RDS_SG" \
+  --protocol tcp \
+  --port 5432 \
+  --source-group "$NODE_SG"
+```
+
+Get private subnets and create DB subnet group:
+```sh
+aws ec2 describe-subnets \
+  --region "$AWS_REGION" \
+  --filters "Name=vpc-id,Values=$VPC_ID" \
+  --query "Subnets[*].[SubnetId,MapPublicIpOnLaunch,AvailabilityZone]" \
+  --output table
+
+PRIVATE_SUBNETS=(${=$(aws ec2 describe-subnets \
+  --region "$AWS_REGION" \
+  --filters "Name=vpc-id,Values=$VPC_ID" \
+  --query 'Subnets[?MapPublicIpOnLaunch==`false`].SubnetId' \
+  --output text)})
+
+print -l $PRIVATE_SUBNETS
+
+aws rds create-db-subnet-group \
+  --region "$AWS_REGION" \
+  --db-subnet-group-name jerney-rds-subnets \
+  --db-subnet-group-description "Private subnets for Jerney RDS" \
+  --subnet-ids $PRIVATE_SUBNETS
+```
+Create RDS PostgreSQL
+```sh
+aws rds create-db-instance \
+  --region "$AWS_REGION" \
+  --db-instance-identifier jerney-pg \
+  --db-instance-class db.t4g.micro \
+  --engine postgres \
+  --engine-version 16 \
+  --allocated-storage 20 \
+  --storage-type gp3 \
+  --master-username jerney_user \
+  --master-user-password "$RDS_PASSWORD \
+  --db-name jerney_db \
+  --vpc-security-group-ids "$RDS_SG" \
+  --db-subnet-group-name jerney-rds-subnets \
+  --no-publicly-accessible \
+  --backup-retention-period 1 \
+  --deletion-protection
+
+# wait
+aws rds wait db-instance-available \
+  --region "$AWS_REGION" \
+  --db-instance-identifier jerney-pg
+
+
+# change password -----
+aws rds modify-db-instance \
+  --region "$AWS_REGION" \
+  --db-instance-identifier jerney-pg \
+  --master-user-password 'ChangeM3' \
+  --apply-immediately
+
+# wait until available
+aws rds wait db-instance-available \
+  --region "$AWS_REGION" \
+  --db-instance-identifier jerney-pg
+```
+
+Get endpoint:
+```sh
+export RDS_ENDPOINT=$(aws rds describe-db-instances \
+  --region "$AWS_REGION" \
+  --db-instance-identifier jerney-pg \
+  --query "DBInstances[0].Endpoint.Address" \
+  --output text)
+
+echo $RDS_ENDPOINT
+```
+
+Test from inside the cluster
+```sh
+kubectl run pgtest \
+  --image=postgres:16-alpine \
+  --rm -it \
+  -n jerney \
+  --env="RDS_ENDPOINT=$RDS_ENDPOINT" \
+  -- sh
+
+# inside:
+psql "postgresql://jerney_user:ChangeM3@${RDS_ENDPOINT}:5432/jerney_db"
+
+#TODO:
+# psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: No such file or directory
+#         Is the server running locally and accepting connections on that socket?
+```
+
+
+Deploy
+```sh
+# inspect env variables:
+kubectl get deploy jerney-backend -n jerney -o yaml | grep -A40 "env:"
+
+helm upgrade jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml \
+  --set externalDatabase.host="$RDS_ENDPOINT" \
+  --set externalDatabase.password="$RDS_PASSWORD" \
+  --wait \
+  --atomic \
+  --timeout 2m
+```
+
+### RDS cleanup
+If deletion protection is enabled, run this first:
+```sh
+aws rds modify-db-instance \
+  --region "$AWS_REGION" \
+  --db-instance-identifier jerney-pg \
+  --no-deletion-protection \
+  --apply-immediately
+
+```
+
+Cleanup
+```sh
+# chmod +x delete-rds.sh
+
+export AWS_REGION=us-east-1 ./delete-rds.sh
+```
 
 ## MiSK
 

@@ -31,10 +31,10 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app: {{ .Values.backend.name }}
+              app: {{ .Values.externalDatabase.name }}
       ports:
         - protocol: TCP
-          port: {{ .Values.postgres.port }}
+          port: {{ .Values.externalDatabase.port }}
 
   egress:
     # Allow frontend -> backend
@@ -50,10 +50,10 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app: {{ .Values.postgres.name }}
+              app: {{ .Values.externalDatabase.name }}
       ports:
         - protocol: TCP
-          port: {{ .Values.postgres.port }}
+          port: {{ .Values.externalDatabase.port }}
 
     # Allow DNS
     - to:

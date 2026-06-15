@@ -1,0 +1,55 @@
+{{- if .Values.frontendCanary.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.frontendCanary.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "jerney.labels" . | indent 4 }}
+spec:
+  replicas: {{ .Values.frontendCanary.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.frontendCanary.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.frontendCanary.name }}
+{{ include "jerney.labels" . | indent 8 }}
+    spec:
+      containers:
+        - name: frontend-canary
+          image: {{ .Values.frontendCanary.image }}
+          ports:
+            - containerPort: {{ .Values.frontendCanary.port }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.frontendCanary.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.frontendCanary.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+{{ toYaml .Values.frontendCanary.resources | indent 12 }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.frontendCanary.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "jerney.labels" . | indent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Values.frontendCanary.name }}
+  ports:
+    - port: {{ .Values.frontendCanary.port }}
+      targetPort: {{ .Values.frontendCanary.port }}
+{{- end }}
