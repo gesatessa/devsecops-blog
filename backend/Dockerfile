@@ -16,9 +16,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY --from=build /app/package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/src ./src
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
 
 EXPOSE 5000
 
