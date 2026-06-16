@@ -1247,6 +1247,10 @@ kubectl get pods -n jerney
 
 👉 push a code change, let CI update `values-dev.yaml`, and Argo CD should deploy it automatically.
 
+This is the milestone:
+Manual helm upgrade ❌
+Git push → automated deploy ✅
+
 ## MiSK
 
 ### .dockerignore
