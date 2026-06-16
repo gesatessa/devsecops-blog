@@ -182,7 +182,7 @@ aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_NAME
 eksctl create nodegroup \
   --cluster $CLUSTER_NAME \
   --region $AWS_REGION \
-  --node-type t3.medium \
+  --node-type t3.small \
   --nodes 1 \
   --managed \
   -- spot
@@ -1062,6 +1062,13 @@ kubectl get secret jerney-ext-db-secret -n jerney
 
 ✅ Now Helm no longer receives, renders, or stores the DB password.
 
+NOTE: one of the goals of Helm is that you don't have to keep re-specifying values that don't change.
+```sh
+helm upgrade jerney ./charts/jerney \
+  -n jerney \
+  -f charts/jerney/values-dev.yaml
+```
+
 ## GHA
 
 The flow:
@@ -1190,6 +1197,55 @@ aws iam put-role-policy \
   --policy-document file:///tmp/github-actions-ecr-policy.json
 
 ```
+
+## ArgoCD
+High-level flow:
+```yml
+GitHub Actions updates values-dev.yaml
+        ↓
+Git commit lands on main
+        ↓
+Argo CD sees chart/values changed
+        ↓
+Argo CD syncs EKS
+```
+
+Install Argo CD:
+```sh
+kubectl create namespace argocd
+
+kubectl apply -n argocd \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# wait
+kubectl get pods -n argocd -w
+```
+Expose UI locally:
+```sh
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# get initial `admin` password:
+kubectl get secret argocd-initial-admin-secret \
+  -n argocd \
+  -o jsonpath="{.data.password}" | base64 -d
+echo
+```
+
+Apply
+```sh
+kubectl apply -f argocd/jerney-app.yaml
+
+# check
+kubectl get application jerney -n argocd -w
+# NAME     SYNC STATUS   HEALTH STATUS
+# jerney   Synced        Degraded
+# jerney   Synced        Progressing
+# jerney   Synced        Healthy
+
+kubectl get pods -n jerney
+```
+
+👉 push a code change, let CI update `values-dev.yaml`, and Argo CD should deploy it automatically.
 
 ## MiSK
 

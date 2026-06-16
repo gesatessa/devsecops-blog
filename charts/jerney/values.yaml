@@ -106,7 +106,8 @@ canary:
 ingress:
   enabled: true
   className: alb
-  host: "jerney.100.28.7.21.nip.io"
+  # host: "jerney.100.28.7.21.nip.io"
+  host: ""
 
 networkPolicy:
   enabled: true

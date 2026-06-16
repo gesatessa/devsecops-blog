@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: jerney
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/gesatessa/devsecops-blog.git
+    targetRevision: main
+    path: charts/jerney
+    helm:
+      valueFiles:
+        - values-dev.yaml
+      parameters:
+        - name: externalDatabase.host
+          value: "jerney-pg.c7g01ueb00li.us-east-1.rds.amazonaws.com"
+        - name: externalSecrets.region
+          value: "us-east-1"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: jerney
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
