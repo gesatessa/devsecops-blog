@@ -15,3 +15,13 @@ kubectl expose deployment nginx \
 
 kubectl get svc nginx-lb -w
 ```
+
+alb controller
+```sh
+# verify 2/2
+kubectl get deployment -n kube-system aws-load-balancer-controller
+kubectl get pods -n kube-system | grep aws-load-balancer
+
+
+helm uninstall aws-load-balancer-controller -n kube-system
+```
