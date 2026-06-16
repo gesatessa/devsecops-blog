@@ -150,11 +150,11 @@ docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION
 docker build -f backend/Dockerfile -t jerney-backend ./backend
 docker build -f frontend/Dockerfile -t jerney-frontend ./frontend
 
-docker tag jerney-backend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-backend:latest
-docker tag jerney-frontend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-frontend:latest
+docker tag jerney-backend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-backend:v1
+docker tag jerney-frontend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-frontend:v1
 
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-backend:latest
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-frontend:latest
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-backend:v1
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/jerney-frontend:v1
 
 ```
 
@@ -1063,6 +1063,29 @@ kubectl get secret jerney-ext-db-secret -n jerney
 ✅ Now Helm no longer receives, renders, or stores the DB password.
 
 ## GHA
+
+The flow:
+```yml
+                 Push / PR
+                      │
+                      ▼
+              GitHub Actions CI
+                      │
+      ┌───────────────┼────────────────┐
+      │               │                │
+      ▼               ▼                ▼
+  Lint & Test    Security Scan    Helm Validation
+      │               │                │
+      └───────────────┼────────────────┘
+                      ▼
+              Build Docker images
+                      │
+                      ▼
+             Push images to ECR
+                      │
+                      ▼
+          (Later) Argo CD deploys them
+```
 
 ❌❌❌ Never put long-lived AWS credentials into GitHub. ❌❌❌
 
