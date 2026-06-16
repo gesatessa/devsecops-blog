@@ -1062,6 +1062,112 @@ kubectl get secret jerney-ext-db-secret -n jerney
 
 ✅ Now Helm no longer receives, renders, or stores the DB password.
 
+## GHA
+
+❌❌❌ Never put long-lived AWS credentials into GitHub. ❌❌❌
+
+```yml
+GitHub Actions
+        │
+        │  OIDC token
+        ▼
+AWS IAM Role
+        │
+ AssumeRoleWithWebIdentity
+        │
+        ▼
+Temporary credentials
+        │
+        ▼
+Push to ECR
+```
+
+The workflow never stores AWS keys. Instead:
+- GitHub proves its identity to AWS using OIDC.
+- AWS verifies the token.
+- AWS issues temporary credentials (typically valid for about an hour).
+- Those credentials are used to push images.
+
+Create GitHub OIDC provider in AWS. If it already exists, that's fine.
+```sh
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+```
+
+Create trust policy
+```sh
+cat > /tmp/github-actions-trust-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:${GITHUB_OWNER}/${GITHUB_REPO}:ref:refs/heads/main"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+# Create IAM role:
+aws iam create-role \
+  --role-name GitHubActionsJerneyECRRole \
+  --assume-role-policy-document file:///tmp/github-actions-trust-policy.json
+```
+
+Create ECR push policy
+```sh
+cat > /tmp/github-actions-ecr-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:CompleteLayerUpload",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart",
+        "ecr:BatchGetImage",
+        "ecr:DescribeRepositories"
+      ],
+      "Resource": [
+        "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT_ID}:repository/jerney-backend",
+        "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT_ID}:repository/jerney-frontend"
+      ]
+    }
+  ]
+}
+EOF
+
+# attach it
+aws iam put-role-policy \
+  --role-name GitHubActionsJerneyECRRole \
+  --policy-name GitHubActionsJerneyECRPushPolicy \
+  --policy-document file:///tmp/github-actions-ecr-policy.json
+
+```
+
 ## MiSK
 
 ### .dockerignore
