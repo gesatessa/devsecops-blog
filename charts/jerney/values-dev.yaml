@@ -2,7 +2,7 @@ postgres:
   password: jerney_pass_2026
 
 backend:
-  image: 865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-backend:6499f3e40db37bfe81849da82d608273538dc994
+  image: 865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-backend:3ba56162164841c60630e8a19511d2472b3596d2
 
 frontend:
-  image: 865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-frontend:6499f3e40db37bfe81849da82d608273538dc994
+  image: 865274826587.dkr.ecr.us-east-1.amazonaws.com/jerney-frontend:3ba56162164841c60630e8a19511d2472b3596d2
