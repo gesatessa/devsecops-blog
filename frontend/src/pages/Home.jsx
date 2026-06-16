@@ -34,7 +34,7 @@ function Home() {
   return (
     <div>
       <div className="home-header">
-        <h1>Let the Jerney Begin 🛤️</h1>
+        <h1>旅を始めよう (Tabi o hajimeyō) 🛤️</h1>
         <p>A blog platform for the main characters. Share your thoughts, vibes, and hot takes.</p>
         <div className="vibe-tags">
           <span className="vibe-tag">✨ no cap content</span>
